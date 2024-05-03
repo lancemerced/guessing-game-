@@ -1,0 +1,103 @@
+import random
+import socket
+import os
+
+host = ""
+port = 7777
+
+banner = b"""
+====GUESSING GAME====
+Enter your guess: 
+"""
+
+# Load existing leaderboard data from file
+def load_leaderboard():
+    if os.path.exists("leaderboard.txt"):
+        with open("leaderboard.txt", "r") as file:
+            leaderboard = file.readlines()
+        return [line.strip().split(",") for line in leaderboard]
+    else:
+        return []
+
+# Save new score and user data to the leaderboard file
+def save_leaderboard(leaderboard):
+    with open("leaderboard.txt", "w") as file:
+        for user in leaderboard:
+            file.write(",".join(user) + "\n")
+
+# Display the leaderboard
+def display_leaderboard(leaderboard):
+    print("\n===== Leaderboard =====")
+    print("Name\tScore")
+    for user in leaderboard:
+        print(user[0] + "\t" + user[1])
+    print("=======================")
+
+# Initialize socket object
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.bind((host, port))
+s.listen(5)
+
+print("Server is listening on port %s" % (port))
+
+conn = None  # connection from client
+
+while True:
+    leaderboard = load_leaderboard()  # Load leaderboard data
+
+    if conn is None:
+        if len(leaderboard) > 0:
+            display_leaderboard(leaderboard)
+
+        # Get user's name
+        user_name = input("Enter your name: ")
+
+        while True:
+            print("Please choose a difficulty level:")
+            print("1. Easy (1-50)")
+            print("2. Medium (1-100)")
+            print("3. Hard (1-500)")
+            difficulty_choice = input("Enter difficulty level (1/2/3): ")
+
+            if difficulty_choice == "1":
+                f = random.randint(1, 50)
+                break
+            elif difficulty_choice == "2":
+                f = random.randint(1, 100)
+                break
+            elif difficulty_choice == "3":
+                f = random.randint(1, 500)
+                break
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+
+        conn, addr = s.accept()  # s-instance of socket
+        conn.sendall(banner)
+        attempts = 0  # Reset attempts for each new game
+
+    else:
+        guessme = f
+        print("Number to guess:", guessme)
+
+        while attempts < 5:  # Limiting attempts to 5 for each game
+            client_input = conn.recv(1024)
+            guess = int(client_input.decode().strip())
+            attempts += 1
+
+            if guess == guessme:
+                conn.sendall(b"CORRECT! You win!")
+                leaderboard.append([user_name, str(attempts)])  # Add user data to the leaderboard
+                save_leaderboard(leaderboard)  # Save updated leaderboard data to file
+                break
+            elif guess > guessme:
+                conn.sendall(b"Guess lower. Attempts left: %d\nEnter guess: " % (5 - attempts))
+            elif guess < guessme:
+                conn.sendall(b"Guess higher. Attempts left: %d\nEnter guess: " % (5 - attempts))
+
+        if attempts >= 5:
+            conn.sendall(b"No attempts left. You lose!")
+
+        conn.close()  # Close connection after each game
+        conn = None  # Reset connection for the next game
+
+s.close()
